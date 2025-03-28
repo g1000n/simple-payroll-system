@@ -1,22 +1,40 @@
 <?php
 class Database {
+    // stores the single instance of the Database class
+    private static $instance = null;
     private $conn;
 
-    // Database configuration directly inside this file
+    // database connection details
     private $host = "localhost";
     private $dbname = "payroll_system";
     private $user = "root";
     private $pass = "";
 
-    public function connect() {
+    // private constructor to prevent creating multiple connections
+    private function __construct() {
         try {
-            // Use the database credentials from within the class
+            // connect to the database using PDO
             $this->conn = new PDO("mysql:host=" . $this->host . ";dbname=" . $this->dbname, $this->user, $this->pass);
+            // enable error reporting for easier debugging
             $this->conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-            return $this->conn;
         } catch (PDOException $e) {
+            // stop the program if the connection fails and show an error message
             die("Database Connection Failed: " . $e->getMessage());
         }
     }
+
+    // returns the single instance of the Database class (Singleton Pattern)
+    public static function getInstance() {
+        if (!self::$instance) {
+            self::$instance = new Database();
+        }
+        return self::$instance;
+    }
+
+    // returns the database connection
+    public function getConnection() {
+        return $this->conn;
+    }
 }
+
 ?>
