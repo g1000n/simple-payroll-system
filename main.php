@@ -1,5 +1,5 @@
 <?php
-
+// import files
 require_once 'EmployeeDAO.php';
 require_once 'menu.php';
 require_once 'choice.php';
@@ -9,7 +9,7 @@ $employeeDAO = new EmployeeDAO();
 
 while (true) {
     $choice = showMenu();
-
+    // basically like switch statement
     match ($choice) {
         "1" => addEmployee($employeeDAO, $departments, $positions, $statuses),
         "2" => viewEmployees($employeeDAO),
