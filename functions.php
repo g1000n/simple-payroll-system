@@ -1,191 +1,251 @@
 <?php
-require_once 'choice.php';
+require_once "EmployeeDAO.php";
 
-function selectOption($message, $options) {
-    echo "\n$message\n";
-    foreach ($options as $key => $value) {
-        echo "$key. $value\n"; // Ensure key is numeric
-    }
-    echo "Enter Choice: ";
-    $choice = trim(fgets(STDIN));
-
-    if (isset($options[$choice])) {
-        return $choice; // Return correct ID (numeric)
-    } else {
-        echo "Invalid selection.\n";
-        return null;
-    }
-}
-
-
-// adding employee
-function addEmployee($employeeDAO, $departments, $positions, $statuses) {
+// adds employee
+function addEmployee($employeeDAO) {
     echo "Enter Employee Name: ";
-    $emp_name = trim(fgets(STDIN));
+    $name = trim(fgets(STDIN));
+
     echo "Enter Date Hired (YYYY-MM-DD): ";
     $date_hired = trim(fgets(STDIN));
 
-    // get IDs
-    $dept_id = selectOption("Select Department:", $departments);
-    $position_id = selectOption("Select Position:", $positions);    
-    $status_id = selectOption("Select Employment Status:", $statuses);
+    // retrieves and validates department ID
+    do {
+        echo "\nAvailable Departments:\n";
+        $departments = $employeeDAO->getDepartments();
+        foreach ($departments as $dept) {
+            echo "{$dept['dept_id']}. {$dept['dept_name']}\n";
+        }
+        echo "Enter Department ID: ";
+        $dept_id = trim(fgets(STDIN));
+
+        $validDept = array_filter($departments, fn($d) => $d['dept_id'] == $dept_id);
+        if (!$validDept) echo "Invalid Department ID. Please enter a valid one.\n";
+    } while (!$validDept);
+
+    // retrieves and and validates Position ID 
+    do {
+        echo "\nAvailable Job Positions:\n";
+        $positions = $employeeDAO->getJobPositions();
+        foreach ($positions as $job) {
+            echo "{$job['position_id']}. {$job['position_title']}\n";
+        }
+        echo "Enter Position ID: ";
+        $position_id = trim(fgets(STDIN));
+
+        $validPosition = array_filter($positions, fn($p) => $p['position_id'] == $position_id);
+        if (!$validPosition) echo "Invalid Position ID. Please enter a valid one.\n";
+    } while (!$validPosition);
+
     echo "Enter Designation: ";
     $designation = trim(fgets(STDIN));
-    echo "Enter Hours Worked: ";
-    $hours_worked = (float) trim(fgets(STDIN));
-    echo "Enter Rate per Hour: ";
-    $rate_per_hour = (float) trim(fgets(STDIN));
-    echo "Enter Overtime Hours: ";
-    $ot_hours = (float) trim(fgets(STDIN));
 
-    // make employee object
-    $employee = new Employee(
-        null, // id is auto generated
-        $emp_name, $date_hired, $dept_id,
-        $position_id, $designation, $status_id,
-        $hours_worked, $rate_per_hour, $ot_hours
-    );
+    // retrieves and validates Employment Status ID
+    do {
+        echo "\nAvailable Employment Statuses:\n";
+        $statuses = $employeeDAO->getEmploymentStatuses();
+        foreach ($statuses as $status) {
+            echo "{$status['status_id']}. {$status['status_name']}\n";
+        }
+        echo "Enter Status ID: ";
+        $status_id = trim(fgets(STDIN));
 
+        $validStatus = array_filter($statuses, fn($s) => $s['status_id'] == $status_id);
+        if (!$validStatus) echo "Invalid Status ID. Please enter a valid one.\n";
+    } while (!$validStatus);
 
-    // compute gross pay from employee class
-    $gross_pay = $employee->computeGrossPay(); 
+    // retrieves username and password
+    echo "Enter Username for Employee: ";
+    $username = trim(fgets(STDIN));
 
-    // calls addEmployee from DAO
-    $employeeDAO->addEmployee($employee, $gross_pay);
+    echo "Enter Password for Employee: ";
+    $password = trim(fgets(STDIN));
+
+    // inserts employee and user
+    $emp_id = $employeeDAO->addEmployee($name, $date_hired, $dept_id, $position_id, $designation, $status_id, $username, $password);
+    if (!$emp_id) {
+        echo "Error adding employee.\n";
+        return;
+    }
+
+    echo "Employee added successfully with Username: $username\n";
 }
 
 
-// view function
+
+
+
+// views employees
 function viewEmployees($employeeDAO) {
-    $employees = $employeeDAO->listEmployees(); // gets employee list from DAO
-
-    if (empty($employees)) {
-        echo "\nNo employees found.\n";
-        return;
-    }
-
-    echo "\n=== Employee Records ===\n";
-    echo str_pad("ID", 6) . str_pad("Name", 20) . str_pad("Date Hired", 15) . str_pad("Dept", 25) .
-         str_pad("Position", 15) . str_pad("Designation", 15) . str_pad("Status", 15) .
-         str_pad("Hours", 8) . str_pad("Rate", 8) . str_pad("OT", 8) . str_pad("Gross Pay", 12) . "\n";
-    echo str_repeat("-", 140) . "\n";
-
-    foreach ($employees as $emp) {
-        echo str_pad($emp['emp_id'], 6) .
-             str_pad($emp['emp_name'], 20) .
-             str_pad($emp['date_hired'], 15) .
-             str_pad($emp['department_name'], 25) .  
-             str_pad($emp['position_name'], 15) .    
-             str_pad($emp['designation'], 15) .
-             str_pad($emp['status_name'], 15) .      
-             str_pad($emp['hours_worked'], 8) .
-             str_pad($emp['rate_per_hour'], 8) .
-             str_pad($emp['ot_hours'], 8) .
-             str_pad(number_format($emp['gross_pay'], 2), 12) . "\n"; // format to 2 decimal places
+    echo "\n=== Employee List ===\n";
+    foreach ($employeeDAO->getAllEmployees() as $emp) {
+        echo "{$emp['emp_id']}: {$emp['emp_name']} - Hired: {$emp['date_hired']} - ";
+        echo "Dept: {$emp['dept_name']} - Position: {$emp['position_title']} - Status: {$emp['status_name']}\n";
     }
 }
 
-
-// edit function
-function editEmployee($employeeDAO, $departments, $positions, $statuses) {
-    echo "Enter Employee ID to edit: "; // input the ID to edit
+// edits employees
+function editEmployee($employeeDAO) {
+    echo "Enter Employee ID to edit: ";
     $emp_id = trim(fgets(STDIN));
+    $employee = $employeeDAO->getEmployeeById($emp_id);
 
-    $employee = (array) $employeeDAO->getEmployeeById($emp_id);  // converts the result from getEmployeeById to an associative array (similar to dictionary in python)
     if (!$employee) {
-        echo "Employee not found.\n";
+        echo "Employee not found!\n";
         return;
     }
 
-    echo "Enter New Employee Name ({$employee['emp_name']}): ";
-    $emp_name = trim(fgets(STDIN)) ?: $employee['emp_name'];
+    echo "Editing Employee: {$employee['emp_name']}\n";
+    
+    echo "Enter new Employee Name ({$employee['emp_name']}): ";
+    $name = trim(fgets(STDIN)) ?: $employee['emp_name'];
 
-    echo "Enter New Date Hired ({$employee['date_hired']}): ";
+    echo "Enter new Date Hired ({$employee['date_hired']}): ";
     $date_hired = trim(fgets(STDIN)) ?: $employee['date_hired'];
 
-    echo "Enter New Designation ({$employee['designation']}): ";
+    displayDepartments($employeeDAO);
+    echo "Enter new Department ID ({$employee['dept_id']}): ";
+    $dept_id = trim(fgets(STDIN)) ?: $employee['dept_id'];
+
+    displayJobPositions($employeeDAO);
+    echo "Enter new Position ID ({$employee['position_id']}): ";
+    $position_id = trim(fgets(STDIN)) ?: $employee['position_id'];
+
+    echo "Enter new Designation ({$employee['designation']}): ";
     $designation = trim(fgets(STDIN)) ?: $employee['designation'];
 
-    // gets ids for dept, position, and status
-    $dept_id = selectOption("Select New Department:", $departments);
-    $position_id = selectOption("Select New Position:", $positions);
-    $status_id = selectOption("Select New Employment Status:", $statuses);
-    
+    displayEmploymentStatuses($employeeDAO);
+    echo "Enter new Status ID ({$employee['status_id']}): ";
+    $status_id = trim(fgets(STDIN)) ?: $employee['status_id'];
 
-    echo "Enter New Hours Worked ({$employee['hours_worked']}): ";
-    $input = trim(fgets(STDIN));
-    $hours_worked = ($input !== '') ? (float)$input : $employee['hours_worked'];
-
-    echo "Enter New Rate per Hour ({$employee['rate_per_hour']}): ";
-    $input = trim(fgets(STDIN));
-    $rate_per_hour = ($input !== '') ? (float)$input : $employee['rate_per_hour'];
-
-    echo "Enter New Overtime Hours ({$employee['ot_hours']}): ";
-    $input = trim(fgets(STDIN));
-    $ot_hours = ($input !== '') ? (float)$input : $employee['ot_hours'];
-
-    // employee object
-    $employee = new Employee(
-        $emp_id, $emp_name, $date_hired, $dept_id,
-        $position_id, $designation, $status_id,
-        $hours_worked, $rate_per_hour, $ot_hours
-    );
-    // gross pay computation
-    $gross_pay = $employee->computeGrossPay();
-
-    // updating database
-    $updated = $employeeDAO->updateEmployee($emp_id, [
-        'emp_name' => $emp_name,
-        'date_hired' => $date_hired,
-        'dept_id' => $dept_id,
-        'position_id' => $position_id,
-        'designation' => $designation,
-        'employment_status' => $status_id, // Change this from 'status_id' to match the function's expected key
-        'hours_worked' => $hours_worked,
-        'rate_per_hour' => $rate_per_hour,
-        'ot_hours' => $ot_hours,
-        'gross_pay' => $gross_pay
-    ]);
-    
-
-    if ($updated) {
-        echo "Employee record updated successfully!\n";
-    } else {
-        echo "Error updating employee record.\n";
-    }
+    $employeeDAO->updateEmployee($emp_id, $name, $date_hired, $dept_id, $position_id, $designation, $status_id);
+    echo "Employee updated successfully!\n";
 }
 
-
-// delete function
+// deletes employees
 function deleteEmployee($employeeDAO) {
     echo "Enter Employee ID to delete: ";
     $emp_id = trim(fgets(STDIN));
 
-    // get employees
-    $employees = $employeeDAO->listEmployees();
-
-    // built in function to filter employees to find the one with the matching emp_id
-    $employee = array_filter($employees, fn($e) => $e['emp_id'] == $emp_id);
-
-    if (empty($employee)) {
-        echo "Employee not found.\n";
-        return;
-    }
-
-    // built in reset function to get first elem ent of the filtered employee
-    $employee = reset($employee);
-    echo "Are you sure you want to delete {$employee['emp_name']}? (yes/no): ";
-    $confirm = trim(fgets(STDIN));
-
-    // converts string to lower case
-    if (strtolower($confirm) === 'yes') {
-        // uses delete function from DAO
-        $deleted = $employeeDAO->deleteEmployee($emp_id);
+    $employee = $employeeDAO->getEmployeeById($emp_id);
+    if ($employee) {
+        echo "Are you sure you want to delete {$employee['emp_name']}? (yes/no): ";
+        if (strtolower(trim(fgets(STDIN))) === 'yes') {
+            $employeeDAO->deleteEmployee($emp_id);
+            echo "Employee deleted successfully!\n";
+        } else {
+            echo "Deletion canceled.\n";
+        }
     } else {
-        echo "Deletion canceled.\n";
+        echo "Employee ID not found!\n";
     }
 }
 
+// helper function that displays departments
+function displayDepartments($employeeDAO) {
+    echo "\nAvailable Departments:\n";
+    foreach ($employeeDAO->getDepartments() as $dept) {
+        echo "{$dept['dept_id']}. {$dept['dept_name']}\n";
+    }
+}
 
+// helper function that displays job positions
+function displayJobPositions($employeeDAO) {
+    echo "\nAvailable Job Positions:\n";
+    foreach ($employeeDAO->getJobPositions() as $job) {
+        echo "{$job['position_id']}. {$job['position_title']}\n";
+    }
+}
+
+// helper function that displays employee statuses
+function displayEmploymentStatuses($employeeDAO) {
+    echo "\nAvailable Employment Statuses:\n";
+    foreach ($employeeDAO->getEmploymentStatuses() as $status) {
+        echo "{$status['status_id']}. {$status['status_name']}\n";
+    }
+}
+
+// payroll functions
+
+// adds payroll
+function addPayroll($employeeDAO) {
+    echo "Enter Employee ID: ";
+    $emp_id = trim(fgets(STDIN));
+
+    // validates if employee exists
+    $employee = $employeeDAO->getEmployeeById($emp_id);
+    if (!$employee) {
+        echo "Error: Employee ID does not exist.\n";
+        return;
+    }
+
+    echo "Enter Hourly Rate: ";
+    $rate_per_hour = floatval(trim(fgets(STDIN)));
+
+    echo "Enter Hours Worked: ";
+    $hours_worked = floatval(trim(fgets(STDIN)));
+
+    echo "Enter Overtime Hours: ";
+    $ot_hours = floatval(trim(fgets(STDIN)));
+
+    // inserts into payroll table
+    if ($employeeDAO->addPayroll($emp_id, $hours_worked, $rate_per_hour, $ot_hours)) {
+        echo "Payroll record added successfully!\n";
+    } else {
+        echo "Error adding payroll record.\n";
+    }
+}
+
+// views payroll history (only accessible for admin)
+function viewPayrollHistory($employeeDAO) {
+    $payrolls = $employeeDAO->getPayrollHistory();
+
+    if (!$payrolls) {
+        echo "No payroll records found.\n";
+        return;
+    }
+
+    echo str_pad("ID", 5) . str_pad("Emp ID", 8) . str_pad("Employee", 20) . 
+         str_pad("Hours", 10) . str_pad("Rate", 10) . 
+         str_pad("OT Hours", 10) . str_pad("Gross Pay", 12) . "\n";
+
+    echo str_repeat("-", 80) . "\n";
+
+    foreach ($payrolls as $p) {
+        echo str_pad($p['payroll_id'], 5) .
+             str_pad($p['emp_id'], 8) .
+             str_pad($p['emp_name'], 20) .
+             str_pad($p['hours_worked'], 10) .
+             str_pad($p['rate_per_hour'], 10) .
+             str_pad($p['ot_hours'], 10) .
+             str_pad($p['gross_pay'], 12) . "\n";
+    }
+}
+
+// function to view employee's respective payroll
+function viewOwnPayroll($employeeDAO, $emp_id) {
+    $payrolls = $employeeDAO->getPayrollByEmpId($emp_id);
+
+    if (!$payrolls) {
+        echo "No payroll records found.\n";
+        return;
+    }
+
+    echo str_pad("ID", 5) . str_pad("Emp ID", 8) . str_pad("Employee", 20) . 
+         str_pad("Hours", 10) . str_pad("Rate", 10) . 
+         str_pad("OT Hours", 10) . str_pad("Gross Pay", 12) . "\n";
+
+    echo str_repeat("-", 80) . "\n";
+
+    foreach ($payrolls as $p) {
+        echo str_pad($p['payroll_id'], 5).
+             str_pad($p['emp_id'], 8).
+             str_pad($p['emp_name'], 20).
+             str_pad($p['hours_worked'], 10).
+             str_pad($p['rate_per_hour'], 10).
+             str_pad($p['ot_hours'], 10).
+             str_pad($p['gross_pay'], 12) . "\n";
+    }
+}
 
 ?>
