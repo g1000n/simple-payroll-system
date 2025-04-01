@@ -1,22 +1,36 @@
 <?php
-// import files
-require_once 'EmployeeDAO.php';
-require_once 'menu.php';
-require_once 'choice.php';
-require_once 'functions.php';
+// main.php
+require_once "auth.php";
 
-$employeeDAO = new EmployeeDAO();
+$auth = new Auth();
 
-while (true) {
-    $choice = showMenu();
-    // basically like switch statement
-    match ($choice) {
-        "1" => addEmployee($employeeDAO, $departments, $positions, $statuses),
-        "2" => viewEmployees($employeeDAO),
-        "3" => editEmployee($employeeDAO, $departments, $positions, $statuses),
-        "4" => deleteEmployee($employeeDAO),
-        "5" => exit("Exiting program...\n"),
-        default => print("Invalid option. Try again.\n")
-    };
+// login
+echo "=== Payroll System Login ===\n";
+echo "Username: ";
+$username = trim(fgets(STDIN));
+echo "Password: ";
+$password = trim(fgets(STDIN));
+
+$userData = $auth->login($username, $password);
+
+
+if ($userData) {
+    echo "Login successful!\n";
+
+    // Store user data in session
+    $_SESSION['emp_id'] = $userData['emp_id'];  // Store the employee ID
+    $_SESSION['role'] = $userData['role'];      // Store the role (admin/employee)
+
+    // Redirect based on the role
+    if ($_SESSION['role'] === 'admin') {
+        echo "Redirecting to admin console...\n";
+        require_once "admin_console.php";  // Admin console/dashboard
+    } else {
+        echo "Redirecting to employee console...\n";
+        require_once "employee_console.php";  // Employee console/dashboard
+    }
+} else {
+    echo "Invalid credentials!\n";
 }
+
 ?>
