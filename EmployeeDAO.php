@@ -1,180 +1,190 @@
 <?php
-// import
 require_once "Database.php";
-require_once "Employee.php";
 
 class EmployeeDAO {
     private $conn;
 
+    // constructor to set up the database connection
     public function __construct() {
-        $this->conn = Database::getInstance()->getConnection();  // this gets the singleton DB connection
-    }
-    
-    public function __destruct() {
-        $this->conn = null; // this ensures the database connection is closed when the object is destroyed
+        $database = new Database();
+        $this->conn = $database->conn;
     }
 
-/*
- getEmployeeById function fetches an employee's information, including department name,
- job position title, and employment status, by joining the `employee` table
- with the `department` and `job_position` tables. The employee ID is used
-as a parameterized query to prevent SQL injection.
-*/
-    public function getEmployeeById($emp_id) {
-        $sql = "SELECT e.*, d.dept_name, jp.position_title, e.employment_status 
+    // cleanup the connection when done
+    public function __destruct() {
+        $this->conn = null;
+    }
+
+    // add an employee and create a user account
+    public function addEmployee($name, $date_hired, $dept_id, $position_id, $designation, $status_id, $username, $password) {
+        try {
+            // hash the password
+            $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
+
+            // insert user into users table
+            $sqlUser = "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)";
+            $stmtUser = $this->conn->prepare($sqlUser);
+            $stmtUser->execute([$username, $hashedPassword, 'user']);
+
+            // get the user_id
+            $user_id = $this->conn->lastInsertId();
+
+            // insert employee into employee table
+            $sqlEmployee = "INSERT INTO employee (emp_name, date_hired, dept_id, position_id, designation, status_id, user_id)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)";
+            $stmtEmployee = $this->conn->prepare($sqlEmployee);
+            $stmtEmployee->execute([$name, $date_hired, $dept_id, $position_id, $designation, $status_id, $user_id]);
+
+            return $this->conn->lastInsertId(); // return the new employee ID
+        } catch (PDOException $e) {
+            echo "Error adding employee: " . $e->getMessage() . "\n";
+            return false;
+        }
+    }
+
+    // delete employee and their user account
+    public function deleteEmployee($emp_id) {
+        try {
+            // get user_id linked to the employee
+            $sql = "SELECT user_id FROM employee WHERE emp_id = ?";
+            $stmt = $this->conn->prepare($sql);
+            $stmt->execute([$emp_id]);
+            $employee = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$employee) {
+                echo "Error: Employee not found.\n";
+                return false;
+            }
+
+            $user_id = $employee['user_id'];
+
+            // delete employee
+            $sql = "DELETE FROM employee WHERE emp_id = ?";
+            $stmt = $this->conn->prepare($sql);
+            $stmt->execute([$emp_id]);
+
+            // delete user account if exists
+            if ($user_id) {
+                $sql = "DELETE FROM users WHERE user_id = ?";
+                $stmt = $this->conn->prepare($sql);
+                $stmt->execute([$user_id]);
+            }
+
+            echo "Employee and linked user account deleted.\n";
+            return true;
+        } catch (PDOException $e) {
+            echo "Error deleting employee: " . $e->getMessage() . "\n";
+            return false;
+        }
+    }
+
+    // get all departments
+    public function getDepartments() {
+        $sql = "SELECT * FROM department ORDER BY dept_id ASC";
+        $stmt = $this->conn->prepare($sql);
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    // get all job positions
+    public function getJobPositions() {
+        $sql = "SELECT * FROM job_position ORDER BY position_id ASC";
+        $stmt = $this->conn->prepare($sql);
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    // get all employment statuses
+    public function getEmploymentStatuses() {
+        $sql = "SELECT * FROM employment_status ORDER BY status_id ASC";
+        $stmt = $this->conn->prepare($sql);
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    // update employee details
+    public function updateEmployee($emp_id, $name, $date_hired, $dept_id, $position_id, $designation, $status_id) {
+        try {
+            $sql = "UPDATE employee 
+                    SET emp_name = ?, date_hired = ?, dept_id = ?, position_id = ?, designation = ?, status_id = ? 
+                    WHERE emp_id = ?";
+            $stmt = $this->conn->prepare($sql);
+            $stmt->execute([$name, $date_hired, $dept_id, $position_id, $designation, $status_id, $emp_id]);
+        } catch (PDOException $e) {
+            echo "Error updating employee: " . $e->getMessage() . "\n";
+        }
+    }
+
+    // get all employees
+    public function getAllEmployees() {
+        $sql = "SELECT e.emp_id, e.emp_name, e.date_hired, 
+                    d.dept_name, p.position_title, s.status_name 
                 FROM employee e
-                LEFT JOIN department d ON e.dept_id = d.dept_id
-                LEFT JOIN job_position jp ON e.position_id = jp.position_id
-                WHERE emp_id = ?";
+                JOIN department d ON e.dept_id = d.dept_id
+                JOIN job_position p ON e.position_id = p.position_id
+                JOIN employment_status s ON e.status_id = s.status_id
+                ORDER BY e.emp_id ASC";
+        $stmt = $this->conn->prepare($sql);
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    // get employee by ID
+    public function getEmployeeById($emp_id) {
+        $sql = "SELECT * FROM employee WHERE emp_id = ?";
         $stmt = $this->conn->prepare($sql);
         $stmt->execute([$emp_id]);
         return $stmt->fetch(PDO::FETCH_ASSOC);
     }
-    
 
-    public function updateEmployee($emp_id, $data) {
-        $sql = "UPDATE employee 
-                SET emp_name = ?, date_hired = ?, dept_id = ?, position_id = ?, 
-                    designation = ?, employment_status = ?, hours_worked = ?, rate_per_hour = ?, 
-                    ot_hours = ?, gross_pay = ?
-                WHERE emp_id = ?";
-        $stmt = $this->conn->prepare($sql);
-        return $stmt->execute([
-            $data['emp_name'], $data['date_hired'], $data['dept_id'], $data['position_id'],
-            $data['designation'], $data['employment_status'], $data['hours_worked'], $data['rate_per_hour'],
-            $data['ot_hours'], $data['gross_pay'], $emp_id
-        ]);
-    }
-    
-
-    
-    public function addEmployee($employee) {
+    // calculate and add payroll
+    public function addPayroll($emp_id, $hours_worked, $rate_per_hour, $ot_hours) {
         try {
-            $details = $employee->getEmployeeDetails(); // saves the result so the function doesn’t have to run multiple times.
-            
-            // calculates the total earnings before deductions.
-            $gross_pay = $employee->computeGrossPay(); 
-    
-            // verifies whether the Employee ID is already in the system.
-            if ($this->employeeExists($details["emp_id"])) {
-                echo "Error: Employee ID already exists.\n";
+            // check if employee exists
+            if (!$this->getEmployeeById($emp_id)) {
+                echo "Error: Employee ID does not exist.\n";
                 return false;
             }
-    
-            // SQL query that retrieves data, including gross_pay.
-            $sql = "INSERT INTO employee (emp_id, emp_name, date_hired, dept_id, position_id, designation, 
-                                           employment_status, hours_worked, rate_per_hour, ot_hours, gross_pay) 
-                    VALUES (:emp_id, :emp_name, :date_hired, :dept_id, :position_id, :designation, 
-                            :employment_status, :hours_worked, :rate_per_hour, :ot_hours, :gross_pay)";
-    
-            // set up the SQL statement for execution.
+
+            // calculate gross pay
+            $gross_pay = ($hours_worked * $rate_per_hour) + ($ot_hours * $rate_per_hour * 1.3);
+
+            // insert payroll
+            $sql = "INSERT INTO payroll (emp_id, hours_worked, rate_per_hour, ot_hours, gross_pay) 
+                    VALUES (?, ?, ?, ?, ?)";
             $stmt = $this->conn->prepare($sql);
-    
-            // runs the query with the appropriate values, including the calculated gross_pay.
-            $stmt->execute([
-                ':emp_id' => $details["emp_id"],
-                ':emp_name' => $details["emp_name"],
-                ':date_hired' => $details["date_hired"],
-                ':dept_id' => $details["dept_id"],
-                ':position_id' => $details["position_id"],
-                ':designation' => $details["designation"],
-                ':employment_status' => $details["employment_status"],
-                ':hours_worked' => $details["hours_worked"],
-                ':rate_per_hour' => $details["rate_per_hour"],
-                ':ot_hours' => $details["ot_hours"],
-                ':gross_pay' => $gross_pay // this will now storing gross pay in DB
-            ]);
-    
-            echo "Employee added successfully!\n";
+            $stmt->execute([$emp_id, $hours_worked, $rate_per_hour, $ot_hours, $gross_pay]);
+
             return true;
         } catch (PDOException $e) {
-            echo "Error: Unable to add employee.\n";
-            error_log("Database Error (addEmployee): " . $e->getMessage());
+            echo "Error processing payroll: " . $e->getMessage() . "\n";
             return false;
         }
     }
-    
-    
 
-    public function listEmployees() {
-        // fetches employees, now including gross_pay
-        $sql = "SELECT e.emp_id, e.emp_name, e.date_hired, 
-                       d.dept_name AS department_name, 
-                       p.position_title AS position_name, 
-                       e.designation, 
-                       e.employment_status AS status_name, 
-                       e.hours_worked, e.rate_per_hour, e.ot_hours,
-                       e.gross_pay -- this starts selecting gross_pay from the database
-                FROM employee e
-                LEFT JOIN department d ON e.dept_id = d.dept_id
-                LEFT JOIN job_position p ON e.position_id = p.position_id";
-    
+    // get payroll history for all employees
+    public function getPayrollHistory() {
+        $sql = "SELECT p.payroll_id, p.emp_id, e.emp_name, p.hours_worked, p.rate_per_hour, 
+                       p.ot_hours, p.gross_pay 
+                FROM payroll p
+                JOIN employee e ON p.emp_id = e.emp_id
+                ORDER BY p.payroll_id DESC";
         $stmt = $this->conn->prepare($sql);
         $stmt->execute();
-        $employees = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-        return $employees; // no more manual computation needed
-    }
-    
-
-    public function editEmployee($emp_id, $data) {
-        $sql = "UPDATE employee 
-                SET emp_name = :emp_name, 
-                    date_hired = :date_hired, 
-                    dept_id = :dept_id, 
-                    position_id = :position_id, 
-                    designation = :designation, 
-                    employment_status = :employment_status, 
-                    hours_worked = :hours_worked, 
-                    rate_per_hour = :rate_per_hour, 
-                    ot_hours = :ot_hours, 
-                    gross_pay = :gross_pay 
-                WHERE emp_id = :emp_id";
-    
-        $stmt = $this->conn->prepare($sql);
-        $stmt->execute([
-            ':emp_id' => $emp_id,
-            ':emp_name' => $data['emp_name'],
-            ':date_hired' => $data['date_hired'],
-            ':dept_id' => $data['dept_id'],
-            ':position_id' => $data['position_id'],
-            ':designation' => $data['designation'],
-            ':employment_status' => $data['employment_status'],
-            ':hours_worked' => $data['hours_worked'],
-            ':rate_per_hour' => $data['rate_per_hour'],
-            ':ot_hours' => $data['ot_hours'],
-            ':gross_pay' => $data['gross_pay']
-        ]);
-    }
-    
-    
-    public function deleteEmployee($emp_id) {
-        // SQL statements that deletes employee by ID
-        $sql = "DELETE FROM employee WHERE emp_id = ?";
-        $stmt = $this->conn->prepare($sql);
-        
-        try {
-            $stmt->execute([$emp_id]);
-            if ($stmt->rowCount() > 0) {
-                echo "Employee with ID $emp_id has been deleted.\n";
-            } else {
-                echo "Employee with ID $emp_id not found.\n";
-            }
-        } catch (PDOException $e) {
-            echo "Error deleting employee: " . $e->getMessage() . "\n";
-        }
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    // this function checks if an employee ID already exists
-    public function employeeExists($emp_id) {
-        try {
-            $stmt = $this->conn->prepare("SELECT COUNT(*) FROM employee WHERE emp_id = ?");
-            $stmt->execute([$emp_id]);
-            return $stmt->fetchColumn() > 0;
-        } catch (PDOException $e) {
-            error_log("Error checking employee ID: " . $e->getMessage());
-            return false;
-        }
+    // get payroll for a specific employee
+    public function getPayrollByEmpId($emp_id) {
+        $sql = "SELECT p.payroll_id, p.emp_id, e.emp_name, p.hours_worked, p.rate_per_hour, 
+                    p.ot_hours, p.gross_pay 
+                FROM payroll p
+                JOIN employee e ON p.emp_id = e.emp_id
+                WHERE p.emp_id = ? 
+                ORDER BY p.payroll_id DESC";
+        $stmt = $this->conn->prepare($sql);
+        $stmt->execute([$emp_id]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 }
 ?>
