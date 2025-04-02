@@ -1,6 +1,7 @@
 <?php
 // import
 require_once "Database.php";
+session_start();
 
 class Auth {
     private $conn;
